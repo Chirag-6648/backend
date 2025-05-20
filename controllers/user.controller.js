@@ -39,40 +39,63 @@ const registerUser = async (req, res) => {
       .json({ message: "Error in registering user", error });
   }
 };
-
 const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // 1. Basic input validation
     if (!email || !password) {
       return res
         .status(400)
         .json({ message: "Email and password are required" });
     }
 
+    // 2. Check if user exists
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
+    // 3. Verify password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
+    // 4. Generate JWT
     const token = jwt.sign(
       { userId: user._id, email: user.email },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
     );
 
-    res.status(200).cookie("token", token).json({
-      message: "Login successful",
-    });
+    // 5. Sanitize user before sending response
+    const loggedInUser = await User.findById(user._id).select("-password");
+
+    // 6. Send response with cookie
+    res
+      .cookie("token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "Strict",
+        maxAge: 3600000, // 1 hour
+      })
+      .status(200)
+      .json({
+        message: "Login successful",
+        user: loggedInUser,
+        token,
+      });
   } catch (error) {
     console.error("Error during login", error);
-    res.status(500).json({ message: "Error logging in", error });
+    res.status(500).json({ message: "Error logging in" });
   }
 };
 
-export { registerUser, loginUser };
+const getCurrentUser = async (req, res) => {
+  return res
+    .status(200)
+    .json({ message: "current user fetched successfully", user: req.user });
+};
+
+export { registerUser, loginUser, getCurrentUser };
